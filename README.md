@@ -13,7 +13,7 @@ AI-powered meme generator that creates hilarious, viral-worthy memes in seconds.
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/your-username/meme-ai.git
+git clone https://github.com/ozgureyilmaz/meme-ai.git
 cd meme-ai
 npm install
 ```
