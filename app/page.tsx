@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
+import { fal } from "@fal-ai/client";
 import html2canvas from "html2canvas";
 
 /* ───── Quick Prompt Templates ───── */
@@ -23,31 +24,69 @@ export default function Home() {
   const [error, setError] = useState("");
   const [generationCount, setGenerationCount] = useState(0);
 
+  /* ── API Key State ── */
+  const [apiKey, setApiKey] = useState("");
+  const [showKeyModal, setShowKeyModal] = useState(false);
+  const [keyInput, setKeyInput] = useState("");
+
   const memeRef = useRef<HTMLDivElement>(null);
 
-  /* ── Generate meme from fal.ai ── */
+  /* ── Load API key from localStorage ── */
+  useEffect(() => {
+    const stored = localStorage.getItem("fal_api_key");
+    if (stored) {
+      setApiKey(stored);
+      fal.config({ credentials: stored });
+    }
+  }, []);
+
+  /* ── Save API key ── */
+  const saveApiKey = () => {
+    const key = keyInput.trim();
+    if (!key) return;
+    localStorage.setItem("fal_api_key", key);
+    setApiKey(key);
+    fal.config({ credentials: key });
+    setShowKeyModal(false);
+    setError("");
+  };
+
+  /* ── Generate meme from fal.ai (client-side) ── */
   const generate = useCallback(async () => {
     if (!prompt.trim()) return;
+
+    if (!apiKey) {
+      setShowKeyModal(true);
+      return;
+    }
+
     setLoading(true);
     setError("");
     setImageUrl("");
 
+    const memePrompt = `meme style, internet humor, funny, viral reddit meme, ${prompt}, white space for caption text at top and bottom, high contrast, bold visual`;
+
     try {
-      const res = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
+      const result = await fal.subscribe("fal-ai/flux/dev", {
+        input: {
+          prompt: memePrompt,
+          image_size: "square_hd",
+          num_inference_steps: 28,
+          guidance_scale: 3.5,
+          num_images: 1,
+          enable_safety_checker: true,
+        },
       });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setImageUrl(data.imageUrl);
+
+      const data = result.data as { images: { url: string }[] };
+      setImageUrl(data.images[0].url);
       setGenerationCount((c) => c + 1);
     } catch {
-      setError("Something went wrong. Try again!");
+      setError("Generation failed. Check your API key and try again.");
     } finally {
       setLoading(false);
     }
-  }, [prompt]);
+  }, [prompt, apiKey]);
 
   /* ── Download meme as PNG ── */
   const download = useCallback(async () => {
@@ -79,6 +118,106 @@ export default function Home() {
       <div className="bg-blob" style={{ width: 500, height: 500, bottom: "-5%", right: "-10%", background: "rgba(236, 72, 153, 0.05)", animation: "blob-move 25s ease-in-out infinite reverse" }} />
       <div className="bg-blob" style={{ width: 400, height: 400, top: "50%", left: "50%", transform: "translate(-50%, -50%)", background: "rgba(139, 92, 246, 0.04)", animation: "blob-move 30s ease-in-out infinite" }} />
 
+      {/* ── API Key Modal ── */}
+      {showKeyModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 100,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(0,0,0,0.7)",
+            backdropFilter: "blur(8px)",
+          }}
+          onClick={() => setShowKeyModal(false)}
+        >
+          <div
+            className="glass animate-scale-in"
+            style={{
+              width: "100%",
+              maxWidth: 440,
+              borderRadius: "var(--radius-xl)",
+              padding: "2rem",
+              margin: "1rem",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--color-text-primary)", marginBottom: "0.5rem" }}>
+              🔑 Enter fal.ai API Key
+            </h2>
+            <p style={{ color: "var(--color-text-muted)", fontSize: "0.8125rem", marginBottom: "1rem", lineHeight: 1.5 }}>
+              Get your free API key at{" "}
+              <a
+                href="https://fal.ai/dashboard"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "var(--color-accent-purple)", textDecoration: "underline" }}
+              >
+                fal.ai/dashboard
+              </a>
+              . Your key is stored locally in your browser only.
+            </p>
+            <input
+              type="password"
+              placeholder="Paste your API key here..."
+              value={keyInput}
+              onChange={(e) => setKeyInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") saveApiKey(); }}
+              className="focus-ring"
+              style={{
+                width: "100%",
+                background: "var(--color-bg-primary)",
+                border: "1px solid var(--color-border)",
+                borderRadius: "var(--radius-md)",
+                padding: "0.75rem 1rem",
+                fontSize: "0.8125rem",
+                color: "var(--color-text-primary)",
+                outline: "none",
+                fontFamily: "inherit",
+                marginBottom: "0.75rem",
+              }}
+            />
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button
+                onClick={() => setShowKeyModal(false)}
+                style={{
+                  flex: 1,
+                  padding: "0.625rem",
+                  borderRadius: "var(--radius-md)",
+                  border: "1px solid var(--color-border)",
+                  background: "transparent",
+                  color: "var(--color-text-secondary)",
+                  fontSize: "0.8125rem",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveApiKey}
+                style={{
+                  flex: 1,
+                  padding: "0.625rem",
+                  borderRadius: "var(--radius-md)",
+                  border: "none",
+                  background: "linear-gradient(135deg, #a855f7 0%, #ec4899 100%)",
+                  color: "white",
+                  fontWeight: 600,
+                  fontSize: "0.8125rem",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                Save Key
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <main style={{ position: "relative", zIndex: 1, minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", padding: "3rem 1rem 2rem" }}>
 
         {/* ━━━━━━━━━━ HEADER ━━━━━━━━━━ */}
@@ -97,6 +236,29 @@ export default function Home() {
             >
               MemeAI
             </h1>
+          </div>
+
+          {/* API Key indicator */}
+          <div style={{ marginTop: "0.5rem" }}>
+            <button
+              onClick={() => setShowKeyModal(true)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.35rem",
+                padding: "0.25rem 0.75rem",
+                borderRadius: "999px",
+                background: apiKey ? "rgba(34, 197, 94, 0.08)" : "rgba(239, 68, 68, 0.08)",
+                border: `1px solid ${apiKey ? "rgba(34, 197, 94, 0.2)" : "rgba(239, 68, 68, 0.2)"}`,
+                fontSize: "0.7rem",
+                color: apiKey ? "#4ade80" : "#f87171",
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: apiKey ? "#4ade80" : "#f87171" }} />
+              {apiKey ? "API Key Set" : "Set API Key"}
+            </button>
           </div>
 
           {generationCount > 0 && (
@@ -493,8 +655,6 @@ export default function Home() {
             )}
           </section>
         )}
-
-        {/* ━━━━━━━━━━ FOOTER ━━━━━━━━━━ */}
 
       </main>
     </>
